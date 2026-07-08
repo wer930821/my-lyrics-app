@@ -13,7 +13,7 @@ if not api_key:
 genai.configure(api_key=api_key)
 
 # 使用目前最輕量的模型
-model = genai.GenerativeModel('gemini-1.5-flash')
+model = genai.GenerativeModel('gemini-2.5-flash')
 
 artist = st.text_input("歌手：", value="汪蘇瀧")
 song = st.text_input("歌名：", value="寫故事的人")

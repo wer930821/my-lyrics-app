@@ -1,29 +1,25 @@
 import streamlit as st
-import lyricsgenius
+import requests
 
-st.title("🎵 自動歌詞抓取器")
+st.title("🎵 AI 歌詞快速檢索")
 
-# 請在 Streamlit Secrets 設定 GENIUS_API_TOKEN
-token = st.secrets.get("GENIUS_API_TOKEN")
+artist = st.text_input("歌手：", value="汪蘇瀧")
+song = st.text_input("歌名：", value="寫故事的人")
 
-if not token:
-    st.error("請在 Secrets 設定中加入 GENIUS_API_TOKEN")
-    st.stop()
-
-genius = lyricsgenius.Genius(token)
-
-artist_name = st.text_input("輸入歌手：", "")
-song_name = st.text_input("輸入歌名：", "")
-
-if st.button("🚀 開始自動抓取"):
-    with st.spinner("正在從 Genius 資料庫搜尋歌詞..."):
+if st.button("🚀 獲取歌詞"):
+    with st.spinner("正在連線至歌詞庫..."):
+        # 使用 Lyrics.ovh，這個 API 不需要 Token，也不會被 Cloudflare 擋住
+        url = f"https://api.lyrics.ovh/v1/{artist}/{song}"
+        
         try:
-            # 自動搜尋歌詞
-            song = genius.search_song(song_name, artist_name)
-            if song:
-                st.subheader(f"{song.title} - {song.artist}")
-                st.text_area("歌詞內容", value=song.lyrics, height=400)
+            response = requests.get(url)
+            if response.status_code == 200:
+                data = response.json()
+                lyrics = data.get('lyrics', '找不到歌詞內容')
+                st.text_area("歌詞結果", value=lyrics, height=400)
+            elif response.status_code == 404:
+                st.error("找不到該歌曲，請嘗試檢查歌名或歌手拼字。")
             else:
-                st.warning("找不到這首歌，請確認歌手或歌名是否正確。")
+                st.error(f"連線失敗，狀態碼: {response.status_code}")
         except Exception as e:
-            st.error(f"搜尋失敗: {e}")
+            st.error(f"發生錯誤: {e}")

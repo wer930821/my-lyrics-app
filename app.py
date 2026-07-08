@@ -1,63 +1,57 @@
 import streamlit as st
 import requests
-from bs4 import BeautifulSoup
-import re
 from urllib.parse import quote
 
-st.title("🎵 真正全網自動完整歌詞提取器")
+st.title("🎵 真正全自動完整歌詞獲取器 (無阻擋 API 版)")
 
 artist = st.text_input("歌手：", value="汪蘇瀧")
 song = st.text_input("歌名：", value="寫故事的人")
 
-if st.button("🚀 讓系統自己去抓取完整歌詞"):
-    with st.spinner("系統正在全網點擊網頁、穿透封鎖提取完整歌詞中..."):
+if st.button("🚀 讓系統自己去搜尋完整歌詞"):
+    with st.spinner("系統正在向公共音樂數據庫檢索完整歌詞..."):
         
-        # 1. 轉碼關鍵字，先透過不受阻擋的 DuckDuckGo 尋找真正的歌詞網址
-        keyword = quote(f"{artist} {song} 歌詞")
-        search_url = f"https://html.duckduckgo.com/html/?q={keyword}"
-        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
+        # 1. 第一步：先用歌曲和歌手名稱搜尋歌曲的 ID
+        search_query = quote(f"{artist} {song}")
+        search_url = f"https://neteasecloudmusicapi.vercel.app/search?keywords={search_query}"
         
         try:
-            search_res = requests.get(search_url, headers=headers, timeout=10)
+            # 發送搜尋請求
+            search_res = requests.get(search_url, timeout=10)
+            
             if search_res.status_code == 200:
-                soup = BeautifulSoup(search_res.text, "html.parser")
+                search_data = search_res.json()
+                songs_list = search_data.get("result", {}).get("songs", [])
                 
-                # 抓取搜尋結果的第一個實際網頁連結
-                links = soup.find_all("a", class_="result__url")
-                
-                if links:
-                    # 拿到目標歌詞網（例如 KKBOX 或 Genius）的真實網址
-                    target_url = links[0]["href"].strip()
+                if songs_list:
+                    # 取得第一筆匹配成功的歌曲 ID
+                    song_id = songs_list[0].get("id")
                     
-                    # 2. 終極核心：透過 r.jina.ai 這個完全免費且專門對抗 Cloudflare 的網頁純文字轉換代理
-                    # 它會代替我們的伺服器「點進去網頁」，把整頁的所有文字（包含完整歌詞）全部拔下來
-                    proxy_reader_url = f"https://r.jina.ai/{target_url}"
-                    
-                    st.info(f"🔗 系統已自動尋獲歌詞網頁，正在深度提取整頁內文...")
-                    lyric_res = requests.get(proxy_reader_url, timeout=15)
+                    # 2. 第二步：用歌曲 ID 直接調取「完整歌詞」的 JSON 數據 (100% 避開 403 網頁封鎖)
+                    lyric_url = f"https://neteasecloudmusicapi.vercel.app/lyric?id={song_id}"
+                    lyric_res = requests.get(lyric_url, timeout=10)
                     
                     if lyric_res.status_code == 200:
-                        raw_markdown = lyric_res.text
+                        lyric_data = lyric_res.json()
                         
-                        # 3. 清洗雜質：過濾掉網頁的頁首頁尾、廣告、隱私政策，只留下核心歌詞
-                        lines = raw_markdown.split("\n")
-                        cleaned_lines = []
-                        for line in lines:
-                            # 剔除明顯的網頁導覽標籤或廣告關鍵字
-                            if any(x in line for x in ["Cookie", "隱私權", "登入", "訂閱", "App", "Copyright", "版權所有"]):
-                                continue
-                            cleaned_lines.append(line)
+                        # 提取純文字歌詞（lrc格式）
+                        raw_lyrics = lyric_data.get("lrc", {}).get("lyric", "")
                         
-                        final_lyrics = "\n".join(cleaned_lines).strip()
-                        
-                        st.success(f"✨ 系統已全自動穿透防禦，成功抓取《{song}》完整歌詞！")
-                        st.text_area("完整歌詞內文結果", value=final_lyrics, height=500)
+                        if raw_lyrics.strip():
+                            st.success(f"✨ 系統已成功自動獲取《{song}》的完整歌詞！")
+                            
+                            # 簡單用正則表達式把時間軸 [00:12.34] 濾掉，只留下乾淨的歌詞文字
+                            import re
+                            clean_lyrics = re.sub(r"\[.*\]", "", raw_lyrics).strip()
+                            
+                            st.text_area("完整歌詞內文", value=clean_lyrics, height=500)
+                        else:
+                            st.warning("系統找到了這首歌，但該平台尚未錄入此歌曲的歌詞文字。")
                     else:
-                        st.error("❌ 嘗試點進網頁提取完整文字時失敗，代理伺服器遭拒絕。")
+                        st.error("擷取歌詞文本失敗，伺服器未回應。")
                 else:
-                    st.warning("❌ 搜尋引擎未能定位到該歌曲的任何歌詞網站。")
+                    st.warning("公共數據庫中未找到與該歌手/歌名匹配的歌曲 ID。")
             else:
-                st.error("❌ 線路連線失敗，無法發起自動搜尋。")
+                st.error(f"搜尋服務連線失敗，代碼: {search_res.status_code}")
                 
         except Exception as e:
             st.error(f"自動化程序發生錯誤: {e}")

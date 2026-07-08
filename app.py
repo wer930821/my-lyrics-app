@@ -2,7 +2,7 @@ import streamlit as st
 
 st.set_page_config(page_title="全自動歌詞即時顯示器", layout="centered")
 
-st.title("🎵 全自動網頁歌詞即時顯示器 (瀏覽器安全通道版)")
+st.title("🎵 全自動網頁歌詞即時顯示器")
 st.markdown("💡 **2026 全網通終極版**：採用前端沙盒技術，徹底免疫伺服器 403 封鎖與 JSON 格式當機錯誤，任何人在外面都能直接在線觀看完整歌詞！")
 
 artist = st.text_input("歌手名稱：", value="汪蘇瀧")
@@ -15,8 +15,7 @@ if artist and song:
     st.markdown("---")
     st.markdown("### 📝 完整歌詞在線顯示面板：")
     
-    # 核心黑科技：利用前端 JavaScript 直接向免封鎖的音樂歌詞庫發送請求
-    # 這樣跑的是使用者手機的 IP，大廠防火牆 100% 放行，且絕對不會噴出 'str' object has no attribute 'get'
+    # 所有 JavaScript 的 {} 通通都已經雙重化為 {{}}，絕對不會再噴 SyntaxError
     js_code = f"""
     <div id="lyric-container" style="padding:15px; background-color:#f8f9fa; border-radius:10px; border:1px solid #e9ecef; font-family:sans-serif; white-space:pre-wrap; height:450px; overflow-y:auto; color:#333; line-height:1.8; font-size:16px;">
         ⏳ 系統正在啟用瀏覽器安全通道，正在動態加載《{song}》完整歌詞，請稍候...
@@ -29,7 +28,7 @@ if artist and song:
             // 1. 先透過免封鎖的搜尋接口尋找歌曲 ID
             const searchUrl = `https://music.163.com/api/search/get/web?s=${{encodeURIComponent("{search_keyword}")}}&type=1&limit=1`;
             
-            // 使用 jsonp 或者是混淆繞過前端跨域限制，直接由瀏覽器發起
+            // 使用跨域代理，直接由使用者手機瀏覽器發起請求
             const response = await fetch(`https://api.allorigins.win/get?url=${{encodeURIComponent(searchUrl)}}`);
             const data = await response.json();
             const searchResult = JSON.parse(data.contents);
@@ -57,8 +56,8 @@ if artist and song:
             }} else {{
                 container.innerHTML = `⚠️ 官方資料庫中找不到這首歌，請檢查歌手或歌名是否輸入正確。`;
             }}
-        } catch (error) {{
-            // 終極防線：如果遇到極端跨域阻擋，直接在盒子裡提供官方無痕滾動歌詞面板，確保 100% 看得到歌詞
+        }} catch (error) {{
+            // 修正完成的成對雙括號，確保安全防護
             container.innerHTML = `
                 <div style="text-align:center; padding-top:100px;">
                     <p>💡 偵測到安全防護限制，系統已自動為您切換至【官方原廠歌詞看板】</p>

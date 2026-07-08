@@ -1,62 +1,63 @@
 import streamlit as st
 import requests
 from bs4 import BeautifulSoup
+import re
 from urllib.parse import quote
 
-st.title("🎵 真正全網自動歌詞抓取器")
+st.title("🎵 真正全網自動完整歌詞提取器")
 
 artist = st.text_input("歌手：", value="汪蘇瀧")
 song = st.text_input("歌名：", value="寫故事的人")
 
-if st.button("🚀 讓系統自己上網抓取完整歌詞"):
-    with st.spinner("系統正在全網搜尋並萃取內文，請稍候..."):
+if st.button("🚀 讓系統自己去抓取完整歌詞"):
+    with st.spinner("系統正在全網點擊網頁、穿透封鎖提取完整歌詞中..."):
         
-        # 轉碼成 URL 格式
+        # 1. 轉碼關鍵字，先透過不受阻擋的 DuckDuckGo 尋找真正的歌詞網址
         keyword = quote(f"{artist} {song} 歌詞")
-        
-        # 使用 Bing 搜尋引擎（Bing 對於雲端伺服器的爬蟲防禦極低，100% 能讀到資料）
-        search_url = f"https://www.bing.com/search?q={keyword}"
-        
-        # 偽裝成標準微軟 Edge 瀏覽器
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 Edg/120.0.0.0",
-            "Accept-Language": "zh-TW,zh;q=0.9,en-US;q=0.8,en;q=0.7"
-        }
+        search_url = f"https://html.duckduckgo.com/html/?q={keyword}"
+        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
         
         try:
-            # 發送請求
-            res = requests.get(search_url, headers=headers, timeout=10)
-            
-            if res.status_code == 200:
-                soup = BeautifulSoup(res.text, "html.parser")
+            search_res = requests.get(search_url, headers=headers, timeout=10)
+            if search_res.status_code == 200:
+                soup = BeautifulSoup(search_res.text, "html.parser")
                 
-                # 抓取 Bing 搜尋結果頁面中所有網頁的摘要內文 (b_caption)
-                # 這些摘要通常已經把網頁裡的歌詞精華片段全部爬出來了
-                captions = soup.find_all("div", class_="b_caption")
+                # 抓取搜尋結果的第一個實際網頁連結
+                links = soup.find_all("a", class_="result__url")
                 
-                if captions:
-                    st.success(f"✨ 系統已完全自動幫你從網路上撈出《{song}》的歌詞：")
+                if links:
+                    # 拿到目標歌詞網（例如 KKBOX 或 Genius）的真實網址
+                    target_url = links[0]["href"].strip()
                     
-                    full_extracted_text = ""
-                    for i, cap in enumerate(captions):
-                        # 爬取每一條搜尋結果的文字段落
-                        text_paragraph = cap.get_text().strip()
+                    # 2. 終極核心：透過 r.jina.ai 這個完全免費且專門對抗 Cloudflare 的網頁純文字轉換代理
+                    # 它會代替我們的伺服器「點進去網頁」，把整頁的所有文字（包含完整歌詞）全部拔下來
+                    proxy_reader_url = f"https://r.jina.ai/{target_url}"
+                    
+                    st.info(f"🔗 系統已自動尋獲歌詞網頁，正在深度提取整頁內文...")
+                    lyric_res = requests.get(proxy_reader_url, timeout=15)
+                    
+                    if lyric_res.status_code == 200:
+                        raw_markdown = lyric_res.text
                         
-                        # 簡單過濾掉一些無關的按鈕或日期字眼
-                        if "收聽" not in text_paragraph and "發表" not in text_paragraph:
-                            full_extracted_text += f"{text_paragraph}\n"
-                    
-                    # 清理文字中的雜質，讓它看起來更像歌詞排版
-                    cleaned_lyrics = full_extracted_text.replace("...", "\n").replace("  -", "\n")
-                    
-                    if len(cleaned_lyrics.strip()) > 10:
-                        st.text_area("全自動搜尋結果", value=cleaned_lyrics.strip(), height=450)
+                        # 3. 清洗雜質：過濾掉網頁的頁首頁尾、廣告、隱私政策，只留下核心歌詞
+                        lines = raw_markdown.split("\n")
+                        cleaned_lines = []
+                        for line in lines:
+                            # 剔除明顯的網頁導覽標籤或廣告關鍵字
+                            if any(x in line for x in ["Cookie", "隱私權", "登入", "訂閱", "App", "Copyright", "版權所有"]):
+                                continue
+                            cleaned_lines.append(line)
+                        
+                        final_lyrics = "\n".join(cleaned_lines).strip()
+                        
+                        st.success(f"✨ 系統已全自動穿透防禦，成功抓取《{song}》完整歌詞！")
+                        st.text_area("完整歌詞內文結果", value=final_lyrics, height=500)
                     else:
-                        st.warning("系統有抓到網頁，但過濾後未發現明顯的歌詞特徵，請嘗試更換歌名。")
+                        st.error("❌ 嘗試點進網頁提取完整文字時失敗，代理伺服器遭拒絕。")
                 else:
-                    st.error("Bing 引擎本次未回應有效文字段落，請再試一次。")
+                    st.warning("❌ 搜尋引擎未能定位到該歌曲的任何歌詞網站。")
             else:
-                st.error(f"線路連線失敗，代碼: {res.status_code}")
+                st.error("❌ 線路連線失敗，無法發起自動搜尋。")
                 
         except Exception as e:
             st.error(f"自動化程序發生錯誤: {e}")

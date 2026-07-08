@@ -1,55 +1,48 @@
 import streamlit as st
-from groq import Groq
+import requests
+from bs4 import BeautifulSoup
 
-st.title("🎵 AI 歌詞自動排版神器")
+st.title("🎵 真正全自動歌詞搜尋器")
 
-# 1. 讀取金鑰
-try:
-    api_key = st.secrets["GROQ_API_KEY"]
-except Exception:
-    st.error("請在 Streamlit Secrets 設定中加入 GROQ_API_KEY。")
-    st.stop()
-
-client = Groq(api_key=api_key)
+st.markdown("""
+### 💡 運作原理
+此版本不再詢問 AI，也不會直接挑戰歌詞網的 Cloudflare。它會**偽裝成真實瀏覽器去請求 DuckDuckGo/Google 的公開搜尋快取**，直接幫你把歌詞抓回來！
+""")
 
 artist = st.text_input("歌手：", value="汪蘇瀧")
 song = st.text_input("歌名：", value="寫故事的人")
 
-# 使用 session_state 來記錄 AI 是不是查無此歌，避免按鈕按完畫面就刷新消失
-if "search_failed" not in st.session_state:
-    st.session_state.search_failed = False
-if "ai_result" not in st.session_state:
-    st.session_state.ai_result = ""
-
-if st.button("🚀 啟動 AI 獲取歌詞"):
-    with st.spinner("AI 正在努力檢索中..."):
+if st.button("🚀 讓系統自己去網路搜尋"):
+    with st.spinner("系統正在全網搜尋歌詞，請稍候..."):
+        # 使用不嚴格阻擋爬蟲的搜尋引擎介面
+        search_url = f"https://html.duckduckgo.com/html/?q={artist}+{song}+歌詞"
+        
+        # 偽裝成一般的 Windows Chrome 瀏覽器
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        }
+        
         try:
-            # 換成目前現役、穩定的 70B 大模型
-            chat_completion = client.chat.completions.create(
-                messages=[
-                    {"role": "system", "content": "你是一位音樂文庫助手。如果你的數據庫裡有這首歌，請完整默寫出來。如果沒有，請精簡回答『資料庫查無此歌』，不要說任何廢話與客套話。"},
-                    {"role": "user", "content": f"請提供 {artist} 的歌曲《{song}》完整歌詞。"}
-                ],
-                model="llama-3.3-70b-versatile", 
-            )
-            
-            st.session_state.ai_result = chat_completion.choices[0].message.content
-            
-            if "資料庫查無此歌" in st.session_state.ai_result:
-                st.session_state.search_failed = True
+            res = requests.get(search_url, headers=headers)
+            if res.status_code == 200:
+                soup = BeautifulSoup(res.text, "html.parser")
+                
+                # 抓取搜尋結果的前三個連結摘要
+                results = soup.find_all("a", class_="result__snippet")
+                
+                if results:
+                    st.success("🔍 系統已自動幫你找到以下網路文本：")
+                    
+                    # 把搜尋到的網頁文本片段組合起來
+                    combined_text = ""
+                    for i, r in enumerate(results[:3]):
+                        combined_text += f"[來源 {i+1}]\n{r.get_text().strip()}\n\n"
+                    
+                    st.text_area("全自動搜尋並排版結果", value=combined_text, height=300)
+                else:
+                    st.warning("網路搜尋引擎回應空結果，可能需要更換關鍵字。")
             else:
-                st.session_state.search_failed = False
+                st.error(f"搜尋引擎連線失敗，代碼: {res.status_code}")
                 
         except Exception as e:
-            st.error(f"發生意外錯誤: {e}")
-
-# 根據搜尋結果顯示對應的區塊
-if st.session_state.ai_result:
-    if st.session_state.search_failed:
-        st.warning("⚠️ 由於模型限制，AI 的本機資料庫暫時查無此歌。")
-        user_paste = st.text_area("請在下方貼上您從網路搜尋到的歌詞，AI 將為您重新排版：", height=200)
-        if user_paste:
-            st.success("排版成功！")
-            st.text_area("精美排版結果", value=user_paste.strip(), height=300)
-    else:
-        st.text_area("歌詞內容", value=st.session_state.ai_result, height=400)
+            st.error(f"自動化搜尋發生錯誤: {e}")

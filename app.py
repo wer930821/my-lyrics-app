@@ -1,40 +1,40 @@
 import streamlit as st
 import requests
+import os
 
-# 設定網頁標題
-st.set_page_config(page_title="AI 歌詞排版神器", page_icon="🎵")
+# 1. 優先嘗試從 st.secrets 讀取，沒有則從環境變數讀取
+api_key = st.secrets.get("GEMINI_API_KEY", os.getenv("GEMINI_API_KEY", ""))
+
 st.title("🎵 AI 歌詞完美排版神器")
 
-# 從 Streamlit 雲端讀取 API Key (請確保在 Secrets 設定過)
-try:
-    api_key = st.secrets["GEMINI_API_KEY"]
-except:
-    st.error("系統找不到 API Key，請至 Streamlit Secrets 設定中填入 GEMINI_API_KEY")
+if not api_key:
+    st.error("系統偵測不到 API Key！請檢查 Streamlit Secrets 設定。")
     st.stop()
 
-# 使用正確的 Gemini 1.5-flash 路徑 (修正 404 錯誤)
-url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
+# 2. 直接硬編碼路徑，確保不因變數拼寫錯誤導致 404
+API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent"
 
-# 輸入區
-artist = st.text_input("請輸入歌手名稱：", value="汪蘇瀧")
-song_name = st.text_input("請輸入歌曲名稱：", value="寫故事的人")
+artist = st.text_input("請輸入歌手：", value="汪蘇瀧")
+song = st.text_input("請輸入歌名：", value="寫故事的人")
 
-def get_lyrics(artist_name, song):
-    headers = {"Content-Type": "application/json"}
-    prompt = f"搜尋並輸出歌手「{artist_name}」的歌曲《{song}》完整歌詞。排版要求：一句一行，刪除所有幕後名單、時間戳與前言廢話。"
-    payload = {"contents": [{"parts": [{"text": prompt}]}]}
-    
-    try:
-        response = requests.post(url, headers=headers, json=payload, timeout=30)
-        if response.status_code == 200:
-            return response.json()['candidates'][0]['content']['parts'][0]['text']
-        else:
-            return f"連線失敗 (錯誤碼: {response.status_code})"
-    except Exception as e:
-        return f"程式錯誤: {str(e)}"
-
-# 執行按鈕
 if st.button("🚀 啟動排版"):
-    with st.spinner("AI 正在搜尋與排版中..."):
-        result = get_lyrics(artist, song_name)
-        st.text_area("排版結果（長按可全選複製）", value=result, height=400)
+    with st.spinner("連線中..."):
+        headers = {"Content-Type": "application/json"}
+        payload = {
+            "contents": [{"parts": [{"text": f"請提供歌手「{artist}」的歌曲「{song}」歌詞。只需歌詞，一句一行，不要任何贅述。"}]}]
+        }
+        
+        # 3. 把 Key 放在 Params 參數中，而不是 URL 裡，這樣更乾淨
+        params = {"key": api_key}
+        
+        try:
+            response = requests.post(API_URL, headers=headers, json=payload, params=params, timeout=30)
+            
+            if response.status_code == 200:
+                result = response.json()['candidates'][0]['content']['parts'][0]['text']
+                st.text_area("排版結果", value=result, height=400)
+            else:
+                st.error(f"連線失敗 (錯誤碼: {response.status_code})")
+                st.write("回應內容:", response.text) # 把錯誤訊息印出來幫你除錯
+        except Exception as e:
+            st.error(f"程式崩潰: {e}")
